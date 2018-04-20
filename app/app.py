@@ -9,16 +9,6 @@ import enum
 import requests
 
 
-# Set the configuration variable here
-PORT = 6005
-HOSTNAME = "134.2.9.126"
-PROTOCOL = "http"
-URI_TRAINCONTROLLER = "http://134.2.9.126:6004/station"
-
-
-# ---------------------------------------------------------------------------------------------------------
-
-
 class JobState(enum.Enum):
     """
     Represents the state of each train job that is going to be executed at the station
@@ -34,7 +24,11 @@ class JobState(enum.Enum):
 app = Flask(__name__)
 
 # Configure station route of train controller and train route here
-app.config['URI_TRAINCONTROLLER'] = URI_TRAINCONTROLLER
+app.config.from_envvar('TRAIN_SIMPLE_STATION_CONFIG_FILE')
+PROTOCOL = app.config['PROTOCOL']
+HOSTNAME = app.config['HOSTNAME']
+PORT = app.config['PORT']
+
 app.config['URI_WEBHOOK'] = '{}://{}:{}/train'.format(PROTOCOL, HOSTNAME, PORT)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/train.db'
 db = SQLAlchemy(app)
