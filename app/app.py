@@ -34,6 +34,7 @@ URI_TRAINCONTROLLER = app.config["URI_TRAINCONTROLLER"]
 
 app.config['URI_WEBHOOK'] = URI_WEBHOOK
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/train.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # Init Docker client
