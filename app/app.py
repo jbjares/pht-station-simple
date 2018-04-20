@@ -10,7 +10,7 @@ import requests
 
 
 # Set the configuration variable here
-PORT = "6005"
+PORT = 6005
 HOSTNAME = "134.2.9.126"
 PROTOCOL = "http"
 URI_TRAINCONTROLLER = "http://134.2.9.126:6004/station"
