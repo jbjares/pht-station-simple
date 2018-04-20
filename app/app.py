@@ -1,6 +1,5 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from flask import jsonify
 from sqlalchemy.orm.attributes import flag_modified
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -8,6 +7,16 @@ import atexit
 import docker
 import enum
 import requests
+
+
+# Set the configuration variable here
+PORT = "6005"
+HOSTNAME = "134.2.9.126"
+PROTOCOL = "http"
+URI_TRAINCONTROLLER = "http://134.2.9.126:6004/station"
+
+
+# ---------------------------------------------------------------------------------------------------------
 
 
 class JobState(enum.Enum):
@@ -25,10 +34,8 @@ class JobState(enum.Enum):
 app = Flask(__name__)
 
 # Configure station route of train controller and train route here
-app.config['URI_TRAINCONTROLLER'] = '193.196.20.68:6004/station'
-app.config['URI_WEBHOOK'] = '193.196.20.84:6005/train'
-
-
+app.config['URI_TRAINCONTROLLER'] = URI_TRAINCONTROLLER
+app.config['URI_WEBHOOK'] = '{}://{}:{}/train'.format(PROTOCOL, HOSTNAME, PORT)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/train.db'
 db = SQLAlchemy(app)
 
@@ -52,8 +59,8 @@ class Train(db.Model):
     # Docker Registry URI (from the TrainSubmissionRecord)
     registry_uri = db.Column(db.String(80), unique=True, nullable=False)
 
-    # Path to the zip File
-    filepath = db.Column(db.String(80), unique=True, nullable=True)
+    # Tag of the train that this station is allowed to use
+    train_tag = db.Column(db.String(80), unique=False, nullable=False)
 
     # State of this archive job
     state = db.Column(db.Enum(JobState))
@@ -63,13 +70,9 @@ class Train(db.Model):
             'id': self.id,
             'trainID': self.trainID,
             'registry_uri': self.registry_uri,
-            'filepath': self.filepath,
+            'train_tag': self.filepath,
             'state': str(self.state)
         }
-    #
-    # @classmethod
-    # def from_kws(cls, kws):
-    #     return TrainArchiveJob(trainID=kws['trainID'], registry_uri=kws['registry'], state=JobState.CREATED)
 
 
 def update_job_state(job, state):
@@ -86,14 +89,9 @@ def update_job_state(job, state):
     db.session.commit()
 
 
-def validate_train_submission_record(json):
-    return 'trainID' in json and 'registry' in json
-
-
-def response(body, status_code):
-    resp = jsonify(body)
-    resp.status_code = status_code
-    return resp
+@app.route('/train', methods=['POST'])
+def train():
+    print("Message received")
 
 
 def register_request():
@@ -120,6 +118,6 @@ scheduler.add_job(
 
 
 if __name__ == '__main__':
-    app.run(port=6005, host='0.0.0.0')
+    app.run(port=PORT, host='0.0.0.0')
 
 
