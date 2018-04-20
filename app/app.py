@@ -29,7 +29,10 @@ PROTOCOL = app.config['PROTOCOL']
 HOSTNAME = app.config['HOSTNAME']
 PORT = app.config['PORT']
 
-app.config['URI_WEBHOOK'] = '{}://{}:{}/train'.format(PROTOCOL, HOSTNAME, PORT)
+URI_WEBHOOK = '{}://{}:{}/train'.format(PROTOCOL, HOSTNAME, PORT)
+URI_TRAINCONTROLLER = app.config["URI_TRAINCONTROLLER"]
+
+app.config['URI_WEBHOOK'] = URI_WEBHOOK
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/train.db'
 db = SQLAlchemy(app)
 
@@ -112,6 +115,8 @@ scheduler.add_job(
 
 
 if __name__ == '__main__':
-    app.run(port=PORT, host='0.0.0.0')
+    print("URI_WEBHOOK: {}".format(URI_WEBHOOK))
+    print("URI_TRAINCONTROLLER: {}".format(URI_TRAINCONTROLLER))
 
+    app.run(port=PORT, host='0.0.0.0')
 
