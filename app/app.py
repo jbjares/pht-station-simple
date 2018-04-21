@@ -32,6 +32,7 @@ DOCKER_SOCKET_PATH = app.config['DOCKER_SOCKET_PATH']
 
 URI_WEBHOOK = '{}://{}:{}/train'.format(PROTOCOL, HOSTNAME, PORT)
 URI_STATION_OFFICE = app.config["URI_STATION_OFFICE"]
+STATION_NAME = app.config['STATION_NAME']
 
 app.config['URI_WEBHOOK'] = URI_WEBHOOK
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/train.db'
@@ -100,7 +101,7 @@ def register_request():
     try:
         resp = requests.post(
             URI_STATION_OFFICE,
-            json={"stationURI": URI_WEBHOOK})
+            json={"stationURI": URI_WEBHOOK, 'stationName': STATION_NAME})
         print(resp)
     except requests.exceptions.ConnectionError as e:
         print("Could not connect to Station Office with URI: " + URI_STATION_OFFICE)
