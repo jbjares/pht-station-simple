@@ -28,9 +28,10 @@ app.config.from_envvar('TRAIN_SIMPLE_STATION_CONFIG_FILE')
 PROTOCOL = app.config['PROTOCOL']
 HOSTNAME = app.config['HOSTNAME']
 PORT = app.config['PORT']
+DOCKER_SOCKET_PATH = app.config['DOCKER_SOCKET_PATH']
 
 URI_WEBHOOK = '{}://{}:{}/train'.format(PROTOCOL, HOSTNAME, PORT)
-URI_TRAINCONTROLLER = app.config["URI_TRAINCONTROLLER"]
+URI_STATION_OFFICE = app.config["URI_STATION_OFFICE"]
 
 app.config['URI_WEBHOOK'] = URI_WEBHOOK
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/train.db'
@@ -38,7 +39,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # Init Docker client
-docker_client = docker.DockerClient(base_url='unix://var/run/docker.sock')
+docker_client = docker.DockerClient(base_url='unix:/{}'.format(DOCKER_SOCKET_PATH))
 
 
 @app.before_first_request
@@ -97,8 +98,8 @@ def register_request():
     Request sent to the TrainController to keep this station registered
     """
     requests.post(
-        app.config['URI_TRAINCONTROLLER'],
-        json={"uri": app.config['URI_WEBHOOK']})
+        URI_STATION_OFFICE,
+        json={"stationURI": app.config['URI_WEBHOOK']})
 
 
 # Start the AP Scheduler
@@ -117,7 +118,7 @@ scheduler.add_job(
 
 if __name__ == '__main__':
     print("URI_WEBHOOK: {}".format(URI_WEBHOOK))
-    print("URI_TRAINCONTROLLER: {}".format(URI_TRAINCONTROLLER))
+    print("URI_TRAINCONTROLLER: {}".format(URI_STATION_OFFICE))
 
     app.run(port=PORT, host='0.0.0.0')
 
