@@ -97,9 +97,13 @@ def register_request():
     """
     Request sent to the TrainController to keep this station registered
     """
-    requests.post(
-        URI_STATION_OFFICE,
-        json={"stationURI": app.config['URI_WEBHOOK']})
+    try:
+        resp = requests.post(
+            URI_STATION_OFFICE,
+            json={"stationURI": URI_WEBHOOK})
+        print(resp)
+    except requests.exceptions.ConnectionError as e:
+        print("Could not connect to Station Office with URI: " + URI_STATION_OFFICE)
 
 
 # Start the AP Scheduler
@@ -117,8 +121,4 @@ scheduler.add_job(
 
 
 if __name__ == '__main__':
-    print("URI_WEBHOOK: {}".format(URI_WEBHOOK))
-    print("URI_TRAINCONTROLLER: {}".format(URI_STATION_OFFICE))
-
     app.run(port=PORT, host='0.0.0.0')
-
