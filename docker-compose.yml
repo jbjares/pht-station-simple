@@ -1,0 +1,28 @@
+version: "3.6"
+
+services:
+
+  teststation:
+    image: pht/station-simple:latest
+    hostname: teststation
+    expose:
+      - "6025"
+    ports:
+      - "6025:6025"
+    volumes:
+      - type: bind
+        source: /run/docker.sock
+        target: /run/docker.sock
+      - type: bind
+        source: /tmp/scratch
+        target: /tmp/scratch
+    environment:
+       - PHT_PORT=6025
+       - PHT_HOSTNAME="134.2.9.126"
+       - PHT_PROTOCOL="http"
+       - PHT_URI_STATION_OFFICE="http://193.196.20.68:6006/station"
+       - PHT_DOCKER_SOCKET_PATH="/run/docker.sock"
+       - PHT_STATION_NAME="Test Station"
+       - PHT_ENDPOINT_SPARQL="http://165.227.154.124:8890/sparql"
+       - PHT_SCRATCH=/tmp/scratch
+
