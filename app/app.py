@@ -16,7 +16,7 @@ from SPARQLWrapper import SPARQLWrapper, CSV
 from docker.types import Mount
 
 
-TEST_MODE = True
+TEST_MODE = False
 
 # Path to the SPARQL query in the train container
 PATH_SPARQL = '/train_package/query.sparql'
@@ -63,6 +63,17 @@ def pprint(msg):
 
 def clean_query(query):
     return re.sub("\s+", ' ', query)
+
+
+def remove_trailing_slash(text: str):
+    return text[:-1] if text.endswith('/') else text
+
+
+def build_image_name(remote, image_name, tag=None):
+    base = remove_trailing_slash(remote) + '/' + image_name
+    if tag:
+        base += ( ':' + tag)
+    return base
 
 
 KEEP_OPEN_CMD = "tail -f /dev/null"
@@ -148,6 +159,12 @@ class Train(db.Model):
     # Data dir (The directory where the data for the train is mounted)
     job_data = db.Column(db.String(400), unique=True, nullable=True)
 
+    def from_image(self, tag=True):
+        return build_image_name(self.registry_uri, str(self.train_id), self.from_tag if tag else None)
+
+    def to_image(self, tag=True):
+        return build_image_name(self.registry_uri, str(self.train_id), self.to_tag if tag else None)
+
 
 db.drop_all()
 db.create_all()
@@ -196,7 +213,25 @@ def update_job_data(job, job_data):
 @app.route('/train', methods=['POST'])
 def train():
     train_visit = request.json
-    print(train_visit, file=sys.stderr)
+
+    # Construct new train from train_visit_push
+    train_id = train_visit['trainID']
+    train_docker_registry_uri = train_visit['trainDockerRegistryURI']
+    from_tag = train_visit['fromTag']
+    to_tag = train_visit['toTag']
+    existing_train = db.session.query(Train).filter_by(from_tag=from_tag, to_tag=to_tag, train_id=train_id).first()
+
+    # Add the train to database if we do not have it yet
+    # TODO Needs to be synchronized
+    if existing_train is None:
+        train_job = Train(train_id=train_id,
+                          registry_uri=train_docker_registry_uri,
+                          from_tag=from_tag,
+                          to_tag=to_tag,
+                          state=TrainState.TRAIN_REGISTERED)
+        db.session.add(train_job)
+        db.session.commit()
+
     return json.dumps({'success': True}), 200, {'ContentType': 'application/json'}
 
 
@@ -220,7 +255,6 @@ def work_on_job(f, from_state, via_state, to_state):
         update_job_state(job, to_state)
 
 
-
 scheduler = BackgroundScheduler()
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
@@ -235,8 +269,7 @@ def pull(job: Train):
 def fetch_sparql(job: Train):
 
     # Run the container and fetch the sparql query from the filesystem
-    image = job.registry_uri + "/" + job.train_id + ":" + job.from_tag
-
+    image = job.from_image()
     container_id = cli.create_container(image, KEEP_OPEN_CMD,
                                         detach=True,
                                         working_dir="/",
@@ -250,8 +283,6 @@ def fetch_sparql(job: Train):
     query = ''
     for val in exe_start:
         query += val.decode("utf-8")
-
-    pprint(query)
 
     cli.stop(container_id)
     cli.remove_container(container_id)
@@ -281,7 +312,7 @@ def fetch_data(job: Train):
 
 def run_algorithm(job: Train):
 
-    image = job.registry_uri + "/" + job.train_id + ":" + job.from_tag
+    image = job.from_image()
 
     # Define the mount point inside the container
     mount_data = Mount(target='/data/data.csv',   # Mount data to /data/data.csv as bind mount
@@ -290,7 +321,18 @@ def run_algorithm(job: Train):
                        read_only=True)
 
     # Run the container and mount the data
-    x = docker_client.containers.run(image, mounts=[mount_data])
+    running_algorithm = docker_client.containers.run(image, mounts=[mount_data], detach=True)
+
+    # TODO Timeout!
+    exit_code = running_algorithm.wait()
+
+    # Check the status code. If 0, we can commit and push the new train
+    if exit_code['StatusCode'] == 0:
+        repository = job.to_image(tag=False)
+        tag = job.to_tag
+        running_algorithm.commit(repository, tag)
+        push_result = docker_client.images.push(repository, tag)
+        pprint(push_result)
 
 
 # Define the jobs
@@ -302,6 +344,7 @@ def job(name, fun, start, via, end, max_instances=4, replace_existing=True, trig
         'replace_existing': replace_existing,
         'func': lambda: work_on_job(fun, start, via, end)
     }
+
 
 jobs = {
 
