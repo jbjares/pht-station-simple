@@ -13,9 +13,9 @@ services:
       - type: bind
         source: /run/docker.sock
         target: /run/docker.sock
-      - type: bind
-        source: /tmp/scratch
-        target: /tmp/scratch
+      - type: bind           # Since the docker.socket is mounted, source and target need to be identical
+        source: /mnt/data
+        target: /mnt/data
     environment:
        - PHT_PORT=6025
        - PHT_HOSTNAME="134.2.9.126"
@@ -24,5 +24,5 @@ services:
        - PHT_DOCKER_SOCKET_PATH="/run/docker.sock"
        - PHT_STATION_NAME="Test Station"
        - PHT_ENDPOINT_SPARQL="http://165.227.154.124:8890/sparql"
-       - PHT_SCRATCH=/tmp/scratch
+       - PHT_DATA_DIR=/mnt/data
 

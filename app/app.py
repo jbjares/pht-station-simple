@@ -8,15 +8,18 @@ import requests
 import sys
 import json
 import os
-import tempfile
 import re
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 from apscheduler.triggers.interval import IntervalTrigger
 from SPARQLWrapper import SPARQLWrapper, CSV
+from docker.types import Mount
 
 
 TEST_MODE = True
+
+# Path to the SPARQL query in the train container
+PATH_SPARQL = '/train_package/query.sparql'
 
 ################################################################################################
 # STARTUP TESTS
@@ -29,7 +32,7 @@ CONFIG_KEYS = [
     'PHT_DOCKER_SOCKET_PATH',
     'PHT_STATION_NAME',
     'PHT_ENDPOINT_SPARQL',
-    'PHT_SCRATCH'
+    'PHT_DATA_DIR'
 ]
 for key in CONFIG_KEYS:
     if key not in os.environ:
@@ -74,7 +77,7 @@ URI_STATION_OFFICE = sanitize_config_value(os.environ['PHT_URI_STATION_OFFICE'])
 DOCKER_SOCKET_PATH = sanitize_config_value(os.environ['PHT_DOCKER_SOCKET_PATH'])
 STATION_NAME = sanitize_config_value(os.environ['PHT_STATION_NAME'])
 ENDPOINT_SPARQL = sanitize_config_value(os.environ['PHT_ENDPOINT_SPARQL'])
-SCRATCH = sanitize_config_value(os.environ['PHT_SCRATCH'])
+DATA_DIR = sanitize_config_value(os.environ['PHT_DATA_DIR'])
 
 
 # Derived config
@@ -83,6 +86,7 @@ URI_WEBHOOK = '{}://{}:{}/train'.format(PROTOCOL, HOSTNAME, PORT)
 ################################################################################################
 #  TrainState
 ################################################################################################
+
 
 class TrainState(enum.Enum):
     """
@@ -98,6 +102,9 @@ class TrainState(enum.Enum):
 
     TRAIN_DATA_BEING_FETCHED = "TRAIN_DATA_BEING_FETCHED"  # Train data is being fetched from the SPARQL endpoint
     TRAIN_DATA_FETCHED = "TRAIN_DATA_FETCHED"
+
+    TRAIN_ALGORITHM_BEING_EXECUTED = "TRAIN_ALGORITHM_BEING_EXECUTED"
+    TRAIN_ALGORITHM_EXECUTED = 'TRAIN_ALGORITHM_EXECUTED'
 
     TRAIN_PROCESSED_SUCCESS = "TRAIN_PROCESSED_SUCCESS"  # Train was successfully processed at the station
     TRAIN_PROCESSED_ERROR = "TRAIN_PROCESSED_ERROR"      # Execution of the train resulted in error state
@@ -135,8 +142,11 @@ class Train(db.Model):
     # State of this archive job
     state = db.Column(db.Enum(TrainState))
 
-    #The query to be executed
+    # The query to be executed
     query = db.Column(db.String(5000), unique=False, nullable=True)
+
+    # Data dir (The directory where the data for the train is mounted)
+    job_data = db.Column(db.String(400), unique=True, nullable=True)
 
 
 db.drop_all()
@@ -162,27 +172,25 @@ if TEST_MODE:
     create_dummy_job()
 
 
-def update_job_state(job, state, query=None):
-    """
-    Updates the job state in the persistence
-    :param job:
-    :param state:
-    :param query
-    :return:
-    """
-    job.state = state
+def update_job_property(job: Train, prop: str, value):
 
-    if query:
-        job.query = query
-
-    flag_modified(job, "state")
-
-    if query:
-        flag_modified(job, "query")
-
+    job.__setattr__(prop, value)
+    flag_modified(job, prop)
     db.session.merge(job)
     db.session.flush()
     db.session.commit()
+
+
+def update_job_state(job, state):
+    update_job_property(job, 'state', state)
+
+
+def update_job_query(job, query):
+    update_job_property(job, 'query', query)
+
+
+def update_job_data(job, job_data):
+    update_job_property(job, 'job_data', job_data)
 
 
 @app.route('/train', methods=['POST'])
@@ -212,36 +220,6 @@ def work_on_job(f, from_state, via_state, to_state):
         update_job_state(job, to_state)
 
 
-# Define the individual steps here
-# def dataCollection(endpoint, query):
-# 	print("Data collection started: ")
-# 	endpointURL = endpointParser(endpoint)
-# 	#print(endpointURL)
-# 	queryString = queryParser(query)
-# 	#print(queryString)
-#
-# 	SPARQL = SPARQLWrapper(endpointURL)
-# 	SPARQL.setQuery(queryString)
-# 	SPARQL.setReturnFormat(JSON)
-# 	results = SPARQL.query().convert()
-#
-# 	queryString = queryString[:queryString.find("WHERE")]
-# 	schema = [i.replace("?", "") for i in re.findall("\?\w+", queryString)]
-#
-# 	with open('DIC.csv', 'w+') as csvfile:
-# 		writer = csv.writer(csvfile, delimiter=',')
-# 		writer.writerow([g for g in schema])
-# 		#row = [result[column]["value"] for column in schema]
-#
-# 		for result in results["results"]["bindings"]:
-# 			row = [result[column]["value"] for column in schema]
-# 			writer.writerow(row)
-#
-# 		file_name = csvfile.name
-# 		csvfile.close()
-# 		print("	Data has been collected and saved! \n")
-#		return file_name
-
 
 scheduler = BackgroundScheduler()
 scheduler.start()
@@ -259,71 +237,109 @@ def fetch_sparql(job: Train):
     # Run the container and fetch the sparql query from the filesystem
     image = job.registry_uri + "/" + job.train_id + ":" + job.from_tag
 
-    query = ''
-    container_id = cli.create_container(
-        image, KEEP_OPEN_CMD, detach=True, working_dir="/")['Id']
-    cli.start(container_id)
-    cmds = 'cat /query.sparql'  # comand to execute
+    container_id = cli.create_container(image, KEEP_OPEN_CMD,
+                                        detach=True,
+                                        working_dir="/",
+                                        entrypoint=KEEP_OPEN_CMD)['Id']
 
-    exe = cli.exec_create(container=container_id, cmd=cmds)
+    cli.start(container_id)
+
+    exe = cli.exec_create(container=container_id, cmd='cat {}'.format(PATH_SPARQL))
     exe_start = cli.exec_start(exec_id=exe, stream=True)
 
+    query = ''
     for val in exe_start:
         query += val.decode("utf-8")
 
-    job.query = clean_query(query)
+    pprint(query)
 
     cli.stop(container_id)
     cli.remove_container(container_id)
 
-    flag_modified(job, "query")
-    db.session.merge(job)
-    db.session.flush()
-    db.session.commit()
-
+    update_job_query(job, clean_query(query))
 
 
 def fetch_data(job: Train):
 
-    query = job.query
-    SPARQL = SPARQLWrapper(ENDPOINT_SPARQL)
-    SPARQL.setQuery(query)
-    SPARQL.setReturnFormat(CSV)
-    results = SPARQL.query().convert()
-    pprint(results)
+    # Set up the SPARQL command (only support CSV for now)
+    sparql_command = SPARQLWrapper(ENDPOINT_SPARQL)
+    sparql_command.setQuery(str(job.query))
+    sparql_command.setReturnFormat(CSV)
+    results = sparql_command.query().convert().split()
+
+    # Create a directory for this train in the data dir (use the job id for this)
+    job_data = os.path.abspath(os.path.join(DATA_DIR, str(job.id)))
+
+    # write the results to the data file
+    with open(job_data, 'w') as f:
+        for line in results:
+            f.write(line.decode("utf-8"))
+            f.write(os.linesep)
+
+    update_job_data(job, job_data)
 
 
+def run_algorithm(job: Train):
 
-scheduler.add_job(
-    func=lambda: work_on_job(pull,
-                             TrainState.TRAIN_REGISTERED,
-                             TrainState.PULL_BEING_PERFORMED,
-                             TrainState.PULL_PERFORMED),
-    trigger=IntervalTrigger(seconds=3),
-    id='pull',
-    name='Loads the content from the submitted archive file',
-    replace_existing=True)
+    image = job.registry_uri + "/" + job.train_id + ":" + job.from_tag
+
+    # Define the mount point inside the container
+    mount_data = Mount(target='/data/data.csv',   # Mount data to /data/data.csv as bind mount
+                       source=str(job.job_data),
+                       type='bind',
+                       read_only=True)
+
+    # Run the container and mount the data
+    x = docker_client.containers.run(image, mounts=[mount_data])
 
 
-scheduler.add_job(
-    func=lambda: work_on_job(fetch_sparql,
-                             TrainState.PULL_PERFORMED,
-                             TrainState.SPARQL_BEING_FETCHED,
-                             TrainState.SPARQL_FETCHED),
-    trigger=IntervalTrigger(seconds=3),
-    id='fetch_sparql',
-    name='Loads the content from the submitted archive file',
-    replace_existing=True)
+# Define the jobs
+def job(name, fun, start, via, end, max_instances=4, replace_existing=True, trigger=IntervalTrigger(seconds=3)):
+    return {
+        'trigger': trigger,
+        'name': name,
+        'max_instances': max_instances,
+        'replace_existing': replace_existing,
+        'func': lambda: work_on_job(fun, start, via, end)
+    }
 
-scheduler.add_job(
-    func=lambda: work_on_job(fetch_data,
-                             TrainState.SPARQL_FETCHED,
-                             TrainState.TRAIN_DATA_BEING_FETCHED,
-                             TrainState.TRAIN_DATA_FETCHED),
-    trigger=IntervalTrigger(seconds=3),
-    id='fetch_train_data',
-    name='Loads the content from the submitted archive file',
-    replace_existing=True)
+jobs = {
+
+    "pull": job(
+        name='Pulls the train from the Docker Registry',
+        fun=pull,
+        start=TrainState.TRAIN_REGISTERED,
+        via=TrainState.PULL_BEING_PERFORMED,
+        end=TrainState.PULL_PERFORMED),
+
+    "fetch_sparql": job(
+        name='Extracts the SPARQL query from the downloaded image and stores them in the job database',
+        fun=fetch_sparql,
+        start=TrainState.PULL_PERFORMED,
+        via=TrainState.SPARQL_BEING_FETCHED,
+        end=TrainState.SPARQL_FETCHED),
+
+    'fetch_data': job(
+        name='Gets the data from the SPARQL endpoint that belongs to this station',
+        fun=fetch_data,
+        start=TrainState.SPARQL_FETCHED,
+        via=TrainState.TRAIN_DATA_BEING_FETCHED,
+        end=TrainState.TRAIN_DATA_FETCHED),
+
+    'run_algorithm': job(
+        name='Gets the data from the SPARQL endpoint that belongs to this station',
+        fun=run_algorithm,
+        start=TrainState.TRAIN_DATA_FETCHED,
+        via=TrainState.TRAIN_ALGORITHM_BEING_EXECUTED,
+        end=TrainState.TRAIN_ALGORITHM_EXECUTED)
+}
+
+
+# Register all jobs
+for (key, value) in jobs.items():
+
+    value['id'] = key
+    scheduler.add_job(**value)
 
 
 if __name__ == '__main__':
