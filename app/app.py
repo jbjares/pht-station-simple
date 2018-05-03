@@ -19,7 +19,7 @@ from docker.types import Mount
 TEST_MODE = False
 
 # Path to the SPARQL query in the train container
-PATH_SPARQL = '/train_package/query.sparql'
+PATH_SPARQL = '/pht_package/query.sparql'
 
 ################################################################################################
 # STARTUP TESTS
