@@ -384,6 +384,13 @@ for (key, value) in jobs.items():
     value['id'] = key
     scheduler.add_job(**value)
 
+scheduler.add_job(
+    func=register_request,
+    trigger=IntervalTrigger(seconds=3),
+    replace_existing=True,
+    id="register_request",
+    name="Registers station at station office")
+
 
 if __name__ == '__main__':
     app.run(port=PORT, host='0.0.0.0')
