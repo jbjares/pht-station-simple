@@ -1,21 +1,11 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm.attributes import flag_modified
-from flask import request
-import docker
-import enum
-import requests
-import json
-import os
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
-from apscheduler.triggers.interval import IntervalTrigger
-from SPARQLWrapper import SPARQLWrapper, CSV
-from docker.types import Mount
-from .config import PHT_URI_SERVICE
-from .restclient.station import StationClient
-from .config import PHT_URI_SERVICE
-from .config import PHT_URI_STATION
+from lib.restclient.station import StationClient
+from lib.config.config import PHT_URI_STATION
+from lib.config.config import PHT_URI_SERVICE
+
 
 TEST_MODE = False
 
@@ -328,5 +318,5 @@ atexit.register(lambda: scheduler.shutdown())
 #     name="Registers station at station office")
 #
 #
-# if __name__ == '__main__':
-#     app.run(port=PORT, host='0.0.0.0')
+if __name__ == '__main__':
+    app.run(port=PHT_URI_STATION.get_port(), host='0.0.0.0')

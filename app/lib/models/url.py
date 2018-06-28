@@ -1,5 +1,5 @@
 from urllib.parse import urlparse
-from .functions import string_has_content
+from ..functions import string_has_content
 
 
 # Represents an URI
@@ -18,3 +18,8 @@ class URL:
 
     def geturl(self):
         return self.parseresult.geturl()
+
+    def get_port(self):
+        if ':' in self.parseresult.netloc:
+            return int(self.parseresult.netloc.split(':')[-1])
+        return 80

@@ -1,4 +1,4 @@
-from ..models import URL
+from ..models.url import URL
 from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import requests

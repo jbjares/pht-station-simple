@@ -1,10 +1,10 @@
 __all__ = ['PHT_URI_STATION', 'PHT_URI_SERVICE']
 
 import os
-from .functions import is_quoted
-from .functions import string_has_content
-from .errors import startup_error_if
-from .models import URL
+from ..functions import is_quoted
+from ..functions import string_has_content
+from ..errors import startup_error_if
+from ..models.url import URL
 
 
 ################################################################################################
