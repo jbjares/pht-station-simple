@@ -5,7 +5,7 @@ import atexit
 from lib.restclient.station import StationClient
 from lib.config.config import PHT_URI_STATION
 from lib.config.config import PHT_URI_SERVICE
-
+from lib.functions import pprint
 
 TEST_MODE = False
 
@@ -48,7 +48,7 @@ db = SQLAlchemy(app)
 
 # Set up the scheduler to be used for background jobs
 scheduler = BackgroundScheduler()
-
+scheduler.start()
 
 # Initialize Station REST Client
 station_client = StationClient(PHT_URI_SERVICE)
@@ -57,6 +57,10 @@ station_client.register_station_ping(PHT_URI_STATION, scheduler)
 atexit.register(lambda: station_client.remove_station_ping(scheduler))
 atexit.register(lambda: scheduler.shutdown())
 
+
+@app.route('/health', methods=['GET'])
+def health():
+    return "UP"
 
 
 # class Train(db.Model):

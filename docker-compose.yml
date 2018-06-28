@@ -3,26 +3,9 @@ version: "3.6"
 services:
 
   teststation:
-    image: pht/station-simple:latest
+    image: lukaszimmermann/pht-station-simple:test
     hostname: teststation
-    expose:
-      - "6025"
-    ports:
-      - "6025:6025"
-    volumes:
-      - type: bind
-        source: /run/docker.sock
-        target: /run/docker.sock
-      - type: bind           # Since the docker.socket is mounted, source and target need to be identical
-        source: /mnt/data
-        target: /mnt/data
     environment:
-       - PHT_PORT=6025
-       - PHT_HOSTNAME="134.2.9.126"
-       - PHT_PROTOCOL="http"
-       - PHT_URI_STATION_OFFICE="http://193.196.20.68:6006/station"
-       - PHT_DOCKER_SOCKET_PATH="/run/docker.sock"
-       - PHT_STATION_NAME="Test Station"
-       - PHT_ENDPOINT_SPARQL="http://165.227.154.124:8890/sparql"
-       - PHT_DATA_DIR=/mnt/data
+            - PHT_URI_STATION=http://localhost:6000
+            - PHT_URI_SERVICE=http://localhost:6001/station
 
